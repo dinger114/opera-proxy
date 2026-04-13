@@ -18,7 +18,7 @@ all: bin-linux-amd64 bin-linux-386 bin-linux-arm bin-linux-arm64 \
 	bin-netbsd-amd64 bin-netbsd-386 bin-netbsd-arm bin-netbsd-arm64 \
 	bin-openbsd-amd64 bin-openbsd-386 bin-openbsd-arm bin-openbsd-arm64 \
 	bin-darwin-amd64 bin-darwin-arm64 \
-	bin-windows-amd64 bin-windows-386 bin-windows-arm
+	bin-windows-amd64 bin-windows-386
 
 allplus: all \
 	bin-android-arm bin-android-arm64
@@ -48,7 +48,6 @@ bin-darwin-amd64: $(OUTSUFFIX).darwin-amd64
 bin-darwin-arm64: $(OUTSUFFIX).darwin-arm64
 bin-windows-amd64: $(OUTSUFFIX).windows-amd64.exe
 bin-windows-386: $(OUTSUFFIX).windows-386.exe
-bin-windows-arm: $(OUTSUFFIX).windows-arm.exe
 bin-android-arm: $(OUTSUFFIX).android-arm
 bin-android-arm64: $(OUTSUFFIX).android-arm64
 
@@ -127,9 +126,6 @@ $(OUTSUFFIX).windows-amd64.exe: $(src)
 $(OUTSUFFIX).windows-386.exe: $(src)
 	CGO_ENABLED=0 GOOS=windows GOARCH=386 $(GO) build $(BUILDOPTS) $(LDFLAGS) -o $@
 
-$(OUTSUFFIX).windows-arm.exe: $(src)
-	CGO_ENABLED=0 GOOS=windows GOARCH=arm GOARM=7 $(GO) build $(BUILDOPTS) $(LDFLAGS) -o $@
-
 $(OUTSUFFIX).android-arm: $(src)
 	CC=$(NDK_CC_ARM) CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 $(GO) build $(LDFLAGS_NATIVE) -o $@
 
@@ -174,6 +170,5 @@ install:
 	bin-darwin-arm64 \
 	bin-windows-amd64 \
 	bin-windows-386 \
-	bin-windows-arm \
 	bin-android-arm \
 	bin-android-arm64
