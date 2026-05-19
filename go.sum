@@ -17,7 +17,7 @@ github.com/things-go/go-socks5 v0.1.1 h1:48hy9cHEXPKeG91G/g4n8zW4uynzPUQy/FkcrJ7
 github.com/things-go/go-socks5 v0.1.1/go.mod h1:1YBHVYG7Oli5ae+Pwkp630cPAwY1pjUPmohO1n0Emg0=
 golang.org/x/crypto/x509roots/fallback v0.0.0-20251210140736-7dacc380ba00 h1:qObov2/X4yIpr98j5t6samg3mMF12Rl4taUJd1rWj+c=
 golang.org/x/crypto/x509roots/fallback v0.0.0-20251210140736-7dacc380ba00/go.mod h1:MEIPiCnxvQEjA4astfaKItNwEVZA5Ki+3+nyGbJ5N18=
-golang.org/x/net v0.53.0 h1:d+qAbo5L0orcWAr0a9JweQpjXF19LMXJE8Ey7hwOdUA=
-golang.org/x/net v0.53.0/go.mod h1:JvMuJH7rrdiCfbeHoo3fCQU24Lf5JJwT9W3sJFulfgs=
+golang.org/x/net v0.54.0 h1:2zJIZAxAHV/OHCDTCOHAYehQzLfSXuf/5SoL/Dv6w/w=
+golang.org/x/net v0.54.0/go.mod h1:Sj4oj8jK6XmHpBZU/zWHw3BV3abl4Kvi+Ut7cQcY+cQ=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
