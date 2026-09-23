@@ -20,9 +20,10 @@ jobs:
           fetch-depth: 0
       -
         name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
+          check-latest: true
       -
         name: Read tag
         id: tag
@@ -36,7 +37,7 @@ jobs:
           VERSION=${{steps.tag.outputs.tag}}
       -
         name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: bin/*
           tag_name: ${{ github.ref_name }}

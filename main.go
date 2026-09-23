@@ -473,7 +473,7 @@ func run() int {
 	if args.socksMode {
 		socks, initError := handler.NewSocksServer(handlerDialer, socksLogger)
 		if initError != nil {
-			mainLogger.Critical("Failed to start: %v", err)
+			mainLogger.Critical("Failed to start: %v", initError)
 			return 16
 		}
 		mainLogger.Info("Init complete.")

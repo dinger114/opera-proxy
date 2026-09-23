@@ -1,0 +1,120 @@
+name: dependabot-auto-merge
+
+# Merges the routine dependency PRs (the go-minor-patch batch, plus any
+# go-security PR) once CI is green, and leaves go-major batches for a human.
+# The grouping itself is defined in .github/dependabot.yml.
+#
+# Why pull_request_target: workflows triggered by dependabot on the
+# `pull_request` event get a read-only GITHUB_TOKEN and cannot merge.
+# pull_request_target runs this file from the default branch and, per
+# dependabot/fetch-metadata's own docs, gives a read/write token here. No
+# PR code is checked out or executed anywhere in this workflow, which is
+# what makes pulling the trigger on that event safe.
+#
+# No PAT or GitHub App token is required while master has no branch
+# protection. If "require approvals" is ever turned on, an approval from
+# GITHUB_TOKEN will not satisfy it and this needs a real token instead.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: |
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+
+      - name: Wait for CI
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          contains(steps.meta.outputs.dependency-group, 'go-security')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+
+          # master has no required status checks yet, so auto-merge would
+          # otherwise merge in the same second it is enabled. Poll the PR's
+          # checks by hand instead: this workflow's own job shows up as a
+          # check on the PR and would never finish, so it must be excluded
+          # from the count.
+          SELF='dependabot-auto-merge'
+
+          # Never let a non-JSON/empty response (gh exits non-zero when no
+          # checks are reported yet) break the jq pipeline below.
+          checks() {
+            local out
+            out=$(gh pr checks "$PR_URL" --json name,workflow,state,bucket 2>/dev/null || true)
+            case "$out" in
+              \[*) printf '%s' "$out" ;;
+              *) printf '[]' ;;
+            esac
+          }
+
+          echo "Waiting for CI checks to register..."
+          registered=0
+          for _ in $(seq 1 30); do
+            count=$(checks | jq --arg self "$SELF" '[.[] | select(.workflow != $self)] | length')
+            if [ "${count:-0}" -gt 0 ]; then
+              registered=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$registered" -ne 1 ]; then
+            echo "No CI check appeared within 5 minutes; not merging blindly."
+            exit 1
+          fi
+
+          echo "Waiting for CI checks to finish..."
+          for _ in $(seq 1 90); do
+            summary=$(checks | jq -r --arg self "$SELF" '
+              [.[] | select(.workflow != $self)]
+              | "\(length) \(map(select(.bucket == "pending")) | length) \(map(select(.bucket == "fail" or .bucket == "cancel")) | length)"')
+            total=${summary%% *}
+            rest=${summary#* }
+            pending=${rest%% *}
+            bad=${rest##* }
+            echo "checks: total=$total pending=$pending failing=$bad"
+            if [ "$bad" -gt 0 ]; then
+              echo "CI is not green; leaving the PR alone."
+              exit 1
+            fi
+            if [ "$pending" -eq 0 ]; then
+              break
+            fi
+            sleep 20
+          done
+          if [ "${pending:-1}" -ne 0 ]; then
+            echo "CI still pending after 30 minutes."
+            exit 1
+          fi
+
+      - name: Enable auto-merge
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          contains(steps.meta.outputs.dependency-group, 'go-security')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Flag major bumps for review
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr comment "$PR_URL" --body "Major version bump — auto-merge skipped, needs a human decision."

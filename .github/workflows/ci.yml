@@ -1,0 +1,45 @@
+name: ci
+
+# Runs on every PR (including dependabot's) so that auto-merge has a real
+# status check to gate on, and so that a breaking bump can never be merged
+# just because "it only touched go.mod".
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v4
+      -
+        name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      -
+        name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      -
+        name: Build
+        run: go build ./...
+      -
+        name: Vet
+        run: go vet ./...
+      -
+        name: Test
+        run: go test ./...

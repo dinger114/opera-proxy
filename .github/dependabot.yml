@@ -7,6 +7,25 @@ updates:
     time: "21:00"
   open-pull-requests-limit: 10
   groups:
-    go-dependencies:
+    # Security fixes go out on their own and skip the review queue entirely.
+    go-security:
       patterns:
         - "*"
+      applies-to: security-updates
+    # Routine bumps are batched per semver level so that a major bump
+    # never rides along silently with a batch of patches. Minor and patch
+    # batches are auto-merged by dependabot-auto-merge.yml once CI is green;
+    # major batches stop and wait for a human.
+    go-minor-patch:
+      patterns:
+        - "*"
+      applies-to: version-updates
+      update-types:
+        - minor
+        - patch
+    go-major:
+      patterns:
+        - "*"
+      applies-to: version-updates
+      update-types:
+        - major
