@@ -1,8 +1,15 @@
 PROGNAME = opera-proxy
 OUTSUFFIX = bin/$(PROGNAME)
 BUILDOPTS = -a -tags netgo -trimpath -asmflags -trimpath
-LDFLAGS = -ldflags '-s -w -extldflags "-static"'
-LDFLAGS_NATIVE = -ldflags '-s -w'
+# VERSION is passed by the release workflow from the pushed git tag, e.g.
+# make allplus VERSION=v1.11.3. It used to be accepted and silently ignored,
+# so every release binary carried whatever version the VCS stamp happened to
+# yield. Leave it empty for a local build to keep the VCS-derived version.
+VERSION ?=
+VERSION_FLAG = $(if $(VERSION),-X main.buildVersion=$(VERSION))
+
+LDFLAGS = -ldflags '-s -w -extldflags "-static" $(VERSION_FLAG)'
+LDFLAGS_NATIVE = -ldflags '-s -w $(VERSION_FLAG)'
 
 NDK_CC_ARM = $(abspath ../../ndk-toolchain-arm/bin/arm-linux-androideabi-gcc)
 NDK_CC_ARM64 = $(abspath ../../ndk-toolchain-arm64/bin/aarch64-linux-android21-clang)

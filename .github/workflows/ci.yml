@@ -3,11 +3,16 @@ name: ci
 # Runs on every PR (including dependabot's) so that auto-merge has a real
 # status check to gate on, and so that a breaking bump can never be merged
 # just because "it only touched go.mod".
+#
+# Also callable as a reusable workflow (`uses: ./.github/workflows/ci.yml`) so
+# that a release can never be published from a commit that has not passed
+# build/vet/test. See build.yml.
 on:
   pull_request:
   push:
     branches:
       - master
+  workflow_call:
 
 permissions:
   contents: read
@@ -42,4 +47,4 @@ jobs:
         run: go vet ./...
       -
         name: Test
-        run: go test ./...
+        run: go test -race ./...

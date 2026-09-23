@@ -659,10 +659,30 @@ func readConfig(filename string) error {
 	return nil
 }
 
+// buildVersion is stamped into release builds with
+//
+//	-ldflags "-X main.buildVersion=v1.2.3"
+//
+// which the release workflow fills in from the pushed git tag. An explicit
+// stamp is the only way to get a version into a binary built from a source
+// archive that carries no VCS metadata, such as the Docker image.
+var buildVersion string
+
 func version() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
+	// Otherwise fall back to the VCS state recorded at build time. This
+	// requires the build to have run inside a git checkout, so it is right
+	// for a plain `make` but silent for archive builds.
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"
 	}
-	return bi.Main.Version
+	// "(devel)" is what the toolchain reports for the main module when it
+	// has no version information at all; it is not a version.
+	if v := bi.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	return "unknown"
 }
