@@ -2,6 +2,11 @@ module github.com/Snawoot/opera-proxy
 
 go 1.26.0
 
+// Pin the patch release: go 1.26.0 carries 17 known standard-library
+// vulnerabilities (net/url, crypto/tls, crypto/x509, net/http, encoding/asn1)
+// that govulncheck reports as reachable from this code. 1.26.8 is clean.
+toolchain go1.26.8
+
 require (
 	github.com/Snawoot/go-http-digest-auth-client v1.1.3
 	github.com/hashicorp/go-multierror v1.1.1

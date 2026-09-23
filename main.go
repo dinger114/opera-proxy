@@ -385,7 +385,8 @@ func run() int {
 				return dialer.BasicAuthHeader(seclient.GetProxyCredentials()), nil
 			},
 			caPool,
-			d)
+			d,
+			args.timeout)
 	}
 
 	var handlerDialer dialer.ContextDialer
@@ -479,9 +480,25 @@ func run() int {
 		mainLogger.Info("Init complete.")
 		err = socks.ListenAndServe("tcp", args.bindAddress)
 	} else {
-		h := handler.NewProxyHandler(handlerDialer, proxyLogger)
+		h := handler.NewProxyHandler(handlerDialer, proxyLogger, args.timeout)
+		// A bare http.ListenAndServe uses a zero http.Server, which means no
+		// read, write or idle timeouts at all: a client that connects and then
+		// says nothing holds a goroutine and a file descriptor indefinitely.
+		// ReadHeaderTimeout covers exactly that case. ReadTimeout/WriteTimeout
+		// are deliberately left unset because they are absolute per-request
+		// deadlines that would also apply to hijacked CONNECT tunnels and kill
+		// long-lived ones; the tunnel's own idle deadline is enforced in the
+		// handler. http.TimeoutHandler must NOT be used here either: its
+		// ResponseWriter does not implement http.Hijacker, so every CONNECT
+		// request would fail with 500.
+		server := &http.Server{
+			Addr:              args.bindAddress,
+			Handler:           h,
+			ReadHeaderTimeout: args.timeout,
+			IdleTimeout:       2 * args.timeout,
+		}
 		mainLogger.Info("Init complete.")
-		err = http.ListenAndServe(args.bindAddress, h)
+		err = server.ListenAndServe()
 	}
 	mainLogger.Critical("Server terminated with a reason: %v", err)
 	mainLogger.Info("Shutting down...")

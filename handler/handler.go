@@ -25,9 +25,10 @@ type ProxyHandler struct {
 	logger        *clog.CondLogger
 	dialer        dialer.ContextDialer
 	httptransport http.RoundTripper
+	idleTimeout   time.Duration
 }
 
-func NewProxyHandler(dialer dialer.ContextDialer, logger *clog.CondLogger) *ProxyHandler {
+func NewProxyHandler(dialer dialer.ContextDialer, logger *clog.CondLogger, idleTimeout time.Duration) *ProxyHandler {
 	httptransport := &http.Transport{
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -39,6 +40,7 @@ func NewProxyHandler(dialer dialer.ContextDialer, logger *clog.CondLogger) *Prox
 		logger:        logger,
 		dialer:        dialer,
 		httptransport: httptransport,
+		idleTimeout:   idleTimeout,
 	}
 }
 
@@ -53,9 +55,10 @@ func (s *ProxyHandler) HandleTunnel(wr http.ResponseWriter, req *http.Request) {
 
 	if req.ProtoMajor == 0 || req.ProtoMajor == 1 {
 		// Upgrade client connection
-		localconn, _, err := hijack(wr)
+		localconn, _, err := hijack(wr, s.idleTimeout)
 		if err != nil {
 			s.logger.Error("Can't hijack client connection: %v", err)
+			conn.Close()
 			http.Error(wr, "Can't hijack client connection", http.StatusInternalServerError)
 			return
 		}
@@ -64,12 +67,12 @@ func (s *ProxyHandler) HandleTunnel(wr http.ResponseWriter, req *http.Request) {
 		// Inform client connection is built
 		fmt.Fprintf(localconn, "HTTP/%d.%d 200 OK\r\n\r\n", req.ProtoMajor, req.ProtoMinor)
 
-		proxy(req.Context(), localconn, conn)
+		proxy(req.Context(), localconn, conn, s.idleTimeout)
 	} else if req.ProtoMajor == 2 {
 		wr.Header()["Date"] = nil
 		wr.WriteHeader(http.StatusOK)
 		flush(wr)
-		proxyh2(req.Context(), req.Body, wr, conn)
+		proxyh2(req.Context(), req.Body, wr, conn, s.idleTimeout)
 	} else {
 		s.logger.Error("Unsupported protocol version: %s", req.Proto)
 		http.Error(wr, "Unsupported protocol version.", http.StatusBadRequest)
@@ -95,7 +98,7 @@ func (s *ProxyHandler) HandleRequest(wr http.ResponseWriter, req *http.Request) 
 	copyHeader(wr.Header(), resp.Header)
 	wr.WriteHeader(resp.StatusCode)
 	flush(wr)
-	copyBody(wr, resp.Body)
+	copyBody(wr, resp.Body, func() {})
 }
 
 func (s *ProxyHandler) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
@@ -108,6 +111,7 @@ func (s *ProxyHandler) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 	delHopHeaders(req.Header)
+	delProxyConnectionTokens(req.Header)
 	if isConnect {
 		s.HandleTunnel(wr, req)
 	} else {
@@ -115,11 +119,56 @@ func (s *ProxyHandler) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func proxy(ctx context.Context, left, right net.Conn) {
+// deadlineRefresher returns a function that pushes the idle deadline of every
+// given connection out by idleTimeout. net.Conn methods are safe for
+// concurrent use, so both copy directions may call it. It is a no-op when
+// idleTimeout is zero.
+func deadlineRefresher(idleTimeout time.Duration, conns ...net.Conn) func() {
+	if idleTimeout <= 0 {
+		return func() {}
+	}
+	return func() {
+		deadline := time.Now().Add(idleTimeout)
+		for _, c := range conns {
+			_ = c.SetDeadline(deadline)
+		}
+	}
+}
+
+// copyStream copies src to dst until EOF or error, calling refresh after every
+// successful read so the caller can extend an idle deadline. It reports
+// io.ErrShortWrite when a write is accepted only partially.
+func copyStream(dst io.Writer, src io.Reader, refresh func()) (int64, error) {
+	buf := make([]byte, COPY_BUF)
+	var written int64
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			refresh()
+			w, werr := dst.Write(buf[:n])
+			written += int64(w)
+			if werr != nil {
+				return written, werr
+			}
+			if w < n {
+				return written, io.ErrShortWrite
+			}
+		}
+		if rerr != nil {
+			if rerr == io.EOF {
+				return written, nil
+			}
+			return written, rerr
+		}
+	}
+}
+
+func proxy(ctx context.Context, left, right net.Conn, idleTimeout time.Duration) {
+	refresh := deadlineRefresher(idleTimeout, left, right)
 	wg := sync.WaitGroup{}
 	cpy := func(dst, src net.Conn) {
 		defer wg.Done()
-		io.Copy(dst, src)
+		copyStream(dst, src, refresh)
 		dst.Close()
 	}
 	wg.Add(2)
@@ -128,7 +177,7 @@ func proxy(ctx context.Context, left, right net.Conn) {
 	groupdone := make(chan struct{})
 	go func() {
 		wg.Wait()
-		groupdone <- struct{}{}
+		close(groupdone)
 	}()
 	select {
 	case <-ctx.Done():
@@ -138,19 +187,21 @@ func proxy(ctx context.Context, left, right net.Conn) {
 		return
 	}
 	<-groupdone
-	return
 }
 
-func proxyh2(ctx context.Context, leftreader io.ReadCloser, leftwriter io.Writer, right net.Conn) {
+func proxyh2(ctx context.Context, leftreader io.ReadCloser, leftwriter io.Writer, right net.Conn, idleTimeout time.Duration) {
+	// leftwriter is the HTTP/2 response writer and has no deadline of its own,
+	// so only the upstream socket is refreshed here.
+	refresh := deadlineRefresher(idleTimeout, right)
 	wg := sync.WaitGroup{}
 	ltr := func(dst net.Conn, src io.Reader) {
 		defer wg.Done()
-		io.Copy(dst, src)
+		copyStream(dst, src, refresh)
 		dst.Close()
 	}
 	rtl := func(dst io.Writer, src io.Reader) {
 		defer wg.Done()
-		copyBody(dst, src)
+		copyBody(dst, src, refresh)
 	}
 	wg.Add(2)
 	go ltr(right, leftreader)
@@ -168,18 +219,22 @@ func proxyh2(ctx context.Context, leftreader io.ReadCloser, leftwriter io.Writer
 		return
 	}
 	<-groupdone
-	return
 }
 
 // Hop-by-hop headers. These are removed when sent to the backend.
 // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
+// "Trailer" is spelled in the singular per RFC 7230 section 6.1; the plural
+// form is a historical mistake and http.Header canonicalization never maps
+// one onto the other. Proxy-Authorization belongs here too: it authenticates
+// the client to *this* proxy and must not leak upstream on a proxy chain.
 var hopHeaders = []string{
 	"Connection",
 	"Keep-Alive",
 	"Proxy-Authenticate",
+	"Proxy-Authorization",
 	"Proxy-Connection",
 	"Te", // canonicalized version of "TE"
-	"Trailers",
+	"Trailer",
 	"Transfer-Encoding",
 	"Upgrade",
 }
@@ -198,20 +253,41 @@ func delHopHeaders(header http.Header) {
 	}
 }
 
-func hijack(hijackable interface{}) (net.Conn, *bufio.ReadWriter, error) {
+// delProxyConnectionTokens removes the headers named in the client's
+// Connection header. Those names are hop-by-hop by definition, but they are
+// arbitrary and cannot live in the static hopHeaders list.
+func delProxyConnectionTokens(header http.Header) {
+	for _, v := range header.Values("Connection") {
+		for _, tok := range strings.Split(v, ",") {
+			name := strings.TrimSpace(tok)
+			if name == "" {
+				continue
+			}
+			header.Del(name)
+		}
+	}
+}
+
+// hijack takes over the client connection. The deadline installed by the
+// server (ReadHeaderTimeout / ReadTimeout) still applies to the hijacked
+// connection, so idleTimeout is used as the per-I/O deadline instead of
+// clearing it: a tunnel that goes silent on both ends is eventually reaped
+// rather than held open forever. Each direction refreshes the deadline on
+// every successful read, so an active tunnel is never interrupted.
+func hijack(hijackable interface{}, idleTimeout time.Duration) (net.Conn, *bufio.ReadWriter, error) {
 	hj, ok := hijackable.(http.Hijacker)
 	if !ok {
-		return nil, nil, errors.New("Connection doesn't support hijacking")
+		return nil, nil, errors.New("connection doesn't support hijacking")
 	}
 	conn, rw, err := hj.Hijack()
 	if err != nil {
 		return nil, nil, err
 	}
-	var emptytime time.Time
-	err = conn.SetDeadline(emptytime)
-	if err != nil {
-		conn.Close()
-		return nil, nil, err
+	if idleTimeout > 0 {
+		if err := conn.SetDeadline(time.Now().Add(idleTimeout)); err != nil {
+			conn.Close()
+			return nil, nil, err
+		}
 	}
 	return conn, rw, nil
 }
@@ -225,12 +301,13 @@ func flush(flusher interface{}) bool {
 	return true
 }
 
-func copyBody(wr io.Writer, body io.Reader) {
+func copyBody(wr io.Writer, body io.Reader, refresh func()) {
 	buf := make([]byte, COPY_BUF)
 	for {
 		bread, read_err := body.Read(buf)
 		var write_err error
 		if bread > 0 {
+			refresh()
 			_, write_err = wr.Write(buf[:bread])
 			flush(wr)
 		}
