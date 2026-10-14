@@ -13,7 +13,7 @@ require (
 	github.com/ncruces/go-dns v1.3.3
 	github.com/things-go/go-socks5 v0.1.3
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260921070245-7a4a4d6beae2
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.61.0
 )
 
 require github.com/hashicorp/errwrap v1.1.0 // indirect
