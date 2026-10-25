@@ -6,6 +6,13 @@ updates:
     interval: daily
     time: "21:00"
   open-pull-requests-limit: 10
+  # Dependabot's gomod updater cannot resolve nested modules: it maps this
+  # import path onto the parent module golang.org/x/crypto, whose zip excludes
+  # the nested x509roots/fallback directory, so every run died with
+  # dependency_file_not_resolvable. The submodule publishes no tags (only
+  # pseudo-versions), so it is bumped by hand: go get <path>@<pseudo-version>.
+  ignore:
+    - dependency-name: "golang.org/x/crypto/x509roots/fallback"
   groups:
     # Security fixes go out on their own and skip the review queue entirely.
     go-security:
