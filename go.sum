@@ -5,8 +5,8 @@ github.com/hashicorp/errwrap v1.1.0 h1:OxrOeh75EUXMY8TBjag2fzXGZ40LB6IKw45YeGUDY
 github.com/hashicorp/errwrap v1.1.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+lD48awMYo=
 github.com/hashicorp/go-multierror v1.1.1/go.mod h1:iw975J/qwKPdAO1clOe2L8331t/9/fmwbPZ6JB6eMoM=
-github.com/ncruces/go-dns v1.3.3 h1:59OV7XoJrTCoUMZjWRVs4GOjtntMTZqiQ5Mn+BT13hk=
-github.com/ncruces/go-dns v1.3.3/go.mod h1:tuzixNY8PY/M7yUzcvRbUaeLs3ifIdydpi5H2bfRU+s=
+github.com/ncruces/go-dns v1.3.4 h1:X7HGLSgCcdbZHs4k8evMXcWriqymFtLh9xAMAhJXbJI=
+github.com/ncruces/go-dns v1.3.4/go.mod h1:1ljBVWLh4B3ztk2ZHwfT5xw3469lD0KZC3gGfzVRj+s=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/things-go/go-socks5 v0.1.4 h1:DF0OvKL4O1pxmSh2J/suagjyGV7+hduBblpldPOuVSM=
